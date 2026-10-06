@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daily Travel Log</title>
+<link rel="icon" type="image" href="logo.png">
+<style>
+  /* Everything is scoped under .tl so it can be dropped into an existing site / iframe */
+  .tl { --ink:#eee; --muted:#b5b5b5; --line:#555; --bg:#333; --card:#3d3d3d; --accent:#449944; --bar:#444; --field:#eee; --field-ink:#222; --danger:#ff8a80;
+        font:16px/1.45 Arial,sans-serif; color:var(--ink);
+        background:var(--bg); padding:5rem 16px 4rem; box-sizing:border-box; min-height:100vh; }
+  body { margin:0; background:#333; }
+  .tl header { position:fixed; top:0; left:0; right:0; background:var(--bar); padding:1rem; z-index:10; }
+  .tl header h1 { margin:0; font-size:1.6rem; }
+  .tl footer { position:fixed; bottom:0; left:0; right:0; background:var(--bar); padding:.6rem 1.2rem; text-align:right; font-size:14px; z-index:10; }
+  .tl *, .tl *::before, .tl *::after { box-sizing:inherit; }
+  .tl-wrap { max-width:860px; margin:0 auto; }
+  .tl h1 { font-size:22px; margin:0 0 2px; }
+  .tl h2 { font-size:16px; margin:0 0 12px; }
+  .tl p.sub { margin:0 0 16px; color:var(--muted); }
+  .tl .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+  .tl .grid { display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); }
+  .tl label { display:block; font-size:13px; color:var(--muted); margin-bottom:4px; }
+  .tl input, .tl select, .tl textarea { width:100%; font:inherit; color:var(--field-ink); background:var(--field);
+        border:1px solid var(--line); border-radius:6px; padding:8px 10px; min-height:38px; }
+  .tl input:focus, .tl select:focus { outline:2px solid var(--accent); outline-offset:-1px; border-color:var(--accent); }
+  .tl .leg { border:1px solid var(--line); border-radius:8px; padding:12px; margin-top:12px; background:#383838; }
+  .tl .leg-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; font-weight:600; }
+  .tl .full { grid-column:1/-1; }
+  .tl button { font:inherit; border-radius:6px; padding:8px 14px; cursor:pointer; border:1px solid var(--line); background:var(--bar); color:var(--ink); }
+  .tl button:hover { border-color:#999; }
+  .tl button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .tl button.link { border:0; background:none; color:var(--danger); padding:2px 6px; }
+  .tl .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; }
+  .tl .hint { font-size:12px; color:var(--muted); margin-top:4px; }
+  .tl .err { color:var(--danger); font-size:13px; min-height:18px; margin-top:8px; }
+  .tl .trip { border-top:1px solid var(--line); padding:12px 0; }
+  .tl .trip:first-child { border-top:0; padding-top:0; }
+  .tl .trip-top { display:flex; justify-content:space-between; gap:8px; }
+  .tl .trip-legs { margin:6px 0 0; padding-left:18px; color:var(--muted); font-size:14px; }
+  .tl .empty { color:var(--muted); }
+  .tl [hidden] { display:none !important; }
+  .tl .badge { font-size:12px; border-radius:99px; padding:2px 8px; white-space:nowrap; align-self:flex-start; }
+  .tl .badge.sent { background:#2f4f2f; color:#9be29b; }
+  .tl .badge.pending { background:#5a4520; color:#ffbe44; }
+  .tl .toast { color:#9be29b; font-size:13px; margin-left:4px; align-self:center; }
+  .tl input, .tl select, .tl textarea { font-size:16px; } /* stops iOS zoom-on-focus */
+  @media (max-width:520px) {
+    .tl { padding:10px; }
+    .tl .card { padding:12px; }
+    .tl .grid { grid-template-columns:1fr 1fr; gap:10px; }
+    .tl .full, .tl .grid > div:has(#purpose) { grid-column:1/-1; }
+    .tl .actions button { flex:1 1 auto; min-height:44px; }
+  }
+  @media (max-width:340px) { .tl .grid { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="tl">
+<header><h1>Travel Log</h1></header>
+<div class="tl-wrap">
+
+  <h1 style="font-size:22px">Daily Travel Log</h1>
+  <p class="sub">Multimodal travel. Record every trip you make, and break each trip into up to 4 legs (one per mode of transport).</p>
+
+  <div class="card">
+    <label for="hazmon">HazMon No.</label>
+    <input id="hazmon" placeholder="e.g. 012" autocomplete="off" style="max-width:220px">
+  </div>
+
+  <form id="form" class="card" novalidate>
+    <h2>New trip</h2>
+    <div class="grid">
+      <div><label for="date">Date</label><input id="date" type="date" required></div>
+      <div><label for="time">Start time</label><input id="time" type="time" required></div>
+      <div>
+        <label for="purpose">Trip purpose</label>
+        <select id="purpose" required>
+          <option value="">Select…</option>
+          <option>Work</option><option>Study</option><option>Shopping</option>
+          <option>Leisure / exercise</option><option>Personal errand</option>
+          <option>Visit family / friends</option><option>Medical</option><option>Other</option>
+        </select>
+      </div>
+      <div><label for="from">From</label><input id="from" list="places" placeholder="e.g. Home" required></div>
+      <div><label for="to">To</label><input id="to" list="places" placeholder="e.g. Workplace" required></div>
+    </div>
+    <datalist id="places"><option value="Home"><option value="Workplace"><option value="School / university"><option value="Shopping mall"><option value="Fitness / gym"></datalist>
+
+    <div id="legs"></div>
+    <div class="actions">
+      <button type="button" id="addLeg">+ Add leg</button>
+    </div>
+    <div class="hint">Use a new leg each time you change mode (e.g. walk → BTS → Grab).</div>
+
+    <div class="err" id="err" role="alert"></div>
+    <div class="actions">
+      <button class="primary" type="submit">Submit trip</button>
+      <button type="reset" id="reset">Clear</button>
+      <span class="toast" id="toast"></span>
+    </div>
+  </form>
+
+  <div class="card">
+    <h2>My trips (<span id="count">0</span>)</h2>
+    <div id="list"></div>
+    <div class="actions">
+      <button id="retry" class="primary" hidden>Retry sending</button>
+      <button id="csv">Download CSV</button>
+      <span class="toast" id="toast2"></span>
+    </div>
+    <div class="hint">If a trip can't be sent (e.g. no signal), it is saved here as "Saved, not submitted" and sent automatically when you're back online.</div>
+  </div>
+
+</div>
+<footer>&copy; 2025</footer>
+</div>
+
+<script>
+(() => {
+  // ---- Config: paste your Google Apps Script web-app URL here (see apps-script.gs). ----
+  const SUBMIT_URL = "";
+  const MAX_LEGS = 4;
+  const STORE = "travelLog.v1";
+  const MODES = ["Walk","Bicycle","Motorcycle","Motorcycle taxi","Car","Taxi","Ride-hailing (Grab etc.)",
+                 "Bus","Minibus / songthaew","BTS","MRT","Airport Rail Link","Boat","Electric scooter","Other"];
+
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const load = () => { try { return JSON.parse(localStorage.getItem(STORE)) || {trips:[],hazmon:""}; } catch { return {trips:[],hazmon:""}; } };
+  const save = () => { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch {} };
+  let state = load();
+
+  // ---- Legs ----
+  function legHTML(n) {
+    return `<div class="leg" data-leg>
+      <div class="leg-head"><span>Leg ${n}</span>${n>1?'<button type="button" class="link" data-remove>Remove</button>':''}</div>
+      <div class="grid">
+        <div><label>Mode of travel</label><select data-f="mode" ${n===1?'required':''}><option value="">Select…</option>${MODES.map(m=>`<option>${m}</option>`).join("")}</select></div>
+        <div><label>Distance (km)</label><input data-f="km" type="number" min="0" step="0.01" inputmode="decimal"></div>
+        <div><label>Travel time (min)</label><input data-f="min" type="number" min="0" step="1" inputmode="numeric"></div>
+        <div><label>Travel cost (THB)</label><input data-f="cost" type="number" min="0" step="1" inputmode="decimal"></div>
+        <div class="full"><label>Why did you choose this mode?</label><input data-f="reason" placeholder="e.g. fast, cheap, convenient, got exercise"></div>
+        <div class="full"><label>If you could choose, which mode would you use instead, and why?</label><input data-f="alt" placeholder="Optional"></div>
+      </div></div>`;
+  }
+  function renumber() {
+    [...$("legs").children].forEach((el,i) => {
+      el.querySelector(".leg-head span").textContent = "Leg " + (i+1);
+    });
+    $("addLeg").disabled = $("legs").children.length >= MAX_LEGS;
+  }
+  function addLeg() {
+    const n = $("legs").children.length + 1;
+    if (n > MAX_LEGS) return;
+    $("legs").insertAdjacentHTML("beforeend", legHTML(n));
+    renumber();
+  }
+  $("addLeg").onclick = addLeg;
+  $("legs").addEventListener("click", e => {
+    if (e.target.matches("[data-remove]")) { e.target.closest("[data-leg]").remove(); renumber(); }
+  });
+
+  function resetForm() {
+    $("form").reset(); $("legs").innerHTML = ""; addLeg(); $("err").textContent = "";
+  }
+  $("form").addEventListener("reset", () => setTimeout(() => { $("legs").innerHTML = ""; addLeg(); $("err").textContent = ""; }));
+
+  // ---- Submit a trip ----
+  $("form").addEventListener("submit", e => {
+    e.preventDefault();
+    const trip = { id:Date.now()+"-"+Math.random().toString(36).slice(2,7), status:"pending", hazmon:$("hazmon").value.trim(),
+                   date:$("date").value, time:$("time").value, purpose:$("purpose").value,
+                   from:$("from").value.trim(), to:$("to").value.trim(), legs:[] };
+    [...$("legs").children].forEach(el => {
+      const g = f => el.querySelector(`[data-f=${f}]`).value.trim();
+      const leg = { mode:g("mode"), km:g("km"), min:g("min"), cost:g("cost"), reason:g("reason"), alt:g("alt") };
+      if (leg.mode || leg.km || leg.min || leg.cost) trip.legs.push(leg);
+    });
+    if (!trip.hazmon) return fail("Please enter your HazMon No. at the top.");
+    if (!trip.date || !trip.time || !trip.purpose || !trip.from || !trip.to) return fail("Please fill in date, start time, purpose, from and to.");
+    if (!trip.legs.length || trip.legs.some(l => !l.mode || l.km==="" || l.min==="")) return fail("Each leg needs a mode, distance and travel time.");
+    state.hazmon = trip.hazmon;
+    state.trips.unshift(trip); save(); render();
+    resetForm();
+    sendPending();
+  });
+  const fail = m => { $("err").textContent = m; };
+  function flash(id, m) { $(id).textContent = m; setTimeout(() => $(id).textContent = "", 3500); }
+
+  // ---- Trip list ----
+  const pending = () => state.trips.filter(t => t.status !== "sent");
+  function render() {
+    $("count").textContent = state.trips.length;
+    $("retry").hidden = !pending().length;
+    $("list").innerHTML = state.trips.length ? state.trips.map(t => `
+      <div class="trip"><div class="trip-top">
+        <div><strong>${esc(t.date)} ${esc(t.time)}</strong> · ${esc(t.purpose)}<br>${esc(t.from)} → ${esc(t.to)}</div>
+        ${t.status==="sent" ? '<span class="badge sent">Submitted ✓</span>' : '<span class="badge pending">Saved, not submitted</span>'}</div>
+        <ol class="trip-legs">${t.legs.map(l => `<li>${esc(l.mode)} · ${esc(l.km)} km · ${esc(l.min)} min${l.cost!==""?` · ${esc(l.cost)} THB`:""}${l.reason?` — ${esc(l.reason)}`:""}</li>`).join("")}</ol>
+      </div>`).join("") : '<div class="empty">No trips yet.</div>';
+  }
+
+  // ---- Sending (one row per leg) ----
+  const HEAD = ["Trip ID","HazMon No","Date","Start time","Purpose","From","To","Leg","Mode","Distance (km)","Travel time (min)","Cost (THB)","Reason for choosing","Preferred alternative (and why)"];
+  const tripRows = t => t.legs.map((l,i) => [t.id,t.hazmon,t.date,t.time,t.purpose,t.from,t.to,i+1,l.mode,l.km,l.min,l.cost,l.reason,l.alt]);
+  let sending = false;
+  async function sendPending() {
+    if (sending || !pending().length) return;
+    if (!SUBMIT_URL) { flash("toast2", "Submission address not configured yet (SUBMIT_URL)."); return; }
+    sending = true;
+    for (const t of pending()) {
+      try {
+        // text/plain + no-cors avoids a CORS preflight, which Apps Script doesn't answer.
+        // The response is opaque, so a fetch that resolves is treated as success.
+        await fetch(SUBMIT_URL, {method:"POST", mode:"no-cors", headers:{"Content-Type":"text/plain;charset=utf-8"},
+                    body:JSON.stringify({header:HEAD, rows:tripRows(t)})});
+        t.status = "sent"; save(); render();
+      } catch { flash("toast2", "Couldn't send. Saved on this device, will retry."); break; }
+    }
+    sending = false;
+  }
+  $("retry").onclick = sendPending;
+  window.addEventListener("online", sendPending);
+
+  $("csv").onclick = () => {
+    if (!state.trips.length) return flash("toast2", "Nothing to download");
+    const q = v => `"${String(v).replace(/"/g,'""')}"`;
+    const csv = "\ufeff" + [HEAD,...state.trips.flatMap(tripRows)].map(r => r.map(q).join(",")).join("\r\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+    a.download = `travel-log-${state.hazmon||"user"}.csv`; a.click();
+  };
+
+  $("hazmon").value = state.hazmon || "";
+  $("hazmon").addEventListener("change", () => { state.hazmon = $("hazmon").value.trim(); save(); });
+  addLeg(); render(); sendPending();
+})();
+</script>
+</body>
+</html>
