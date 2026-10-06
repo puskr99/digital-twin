@@ -41,8 +41,10 @@
   .tl .trip-legs { margin:6px 0 0; padding-left:18px; color:var(--muted); font-size:14px; }
   .tl .empty { color:var(--muted); }
   .tl [hidden] { display:none !important; }
+  .tl .quick { margin-bottom:14px; }
   .tl .badge { font-size:12px; border-radius:99px; padding:2px 8px; white-space:nowrap; align-self:flex-start; }
   .tl .badge.sent { background:#2f4f2f; color:#9be29b; }
+  .tl .badge.sending { background:#2d4256; color:#8cc4f5; }
   .tl .badge.pending { background:#5a4520; color:#ffbe44; }
   .tl .toast { color:#9be29b; font-size:13px; margin-left:4px; align-self:center; }
   .tl input, .tl select, .tl textarea { font-size:16px; } /* stops iOS zoom-on-focus */
@@ -71,6 +73,11 @@
 
   <form id="form" class="card" novalidate>
     <h2>New trip</h2>
+    <div class="quick">
+      <label for="repeat">Repeat a previous trip</label>
+      <select id="repeat"></select>
+      <div class="hint">Fills in purpose, places and legs. You still enter the date and start time.</div>
+    </div>
     <div class="grid">
       <div><label for="date">Date</label><input id="date" type="date" required></div>
       <div><label for="time">Start time</label><input id="time" type="time" required></div>
@@ -97,20 +104,23 @@
     <div class="err" id="err" role="alert"></div>
     <div class="actions">
       <button class="primary" type="submit">Submit trip</button>
-      <button type="reset" id="reset">Clear</button>
+      <button type="reset">Clear</button>
       <span class="toast" id="toast"></span>
     </div>
   </form>
 
   <div class="card">
-    <h2>My trips (<span id="count">0</span>)</h2>
-    <div id="list"></div>
+    <h2>Trips submitted: <span id="count">0</span></h2>
+    <div id="pendingBox" hidden>
+      <h2 style="margin-top:16px">Not submitted (<span id="pcount">0</span>)</h2>
+      <div id="list"></div>
+    </div>
     <div class="actions">
       <button id="retry" class="primary" hidden>Retry sending</button>
       <button id="csv">Download CSV</button>
       <span class="toast" id="toast2"></span>
     </div>
-    <div class="hint">If a trip can't be sent (e.g. no signal), it is saved here as "Saved, not submitted" and sent automatically when you're back online.</div>
+    <div class="hint">If a trip can't be sent (e.g. no signal), it appears here as "Saved, not submitted" and is sent automatically when you're back online.</div>
   </div>
 
 </div>
@@ -162,8 +172,35 @@
     if (e.target.matches("[data-remove]")) { e.target.closest("[data-leg]").remove(); renumber(); }
   });
 
+  // ---- Quick fill from previous trips ----
+  const LEG_KEYS = ["mode","km","min","cost","reason","alt"];
+    function setLegs(legs) {
+    $("legs").innerHTML = "";
+    legs.slice(0, MAX_LEGS).forEach(() => addLeg());
+    [...$("legs").children].forEach((el, i) => LEG_KEYS.forEach(k => el.querySelector(`[data-f=${k}]`).value = legs[i][k] ?? ""));
+  }
+  let routes = [];
+  function refreshRepeat() {
+    const seen = new Set(); routes = [];
+    for (const t of state.trips) {            // newest first
+      const key = JSON.stringify([t.purpose, t.from, t.to, t.legs]);
+      if (!seen.has(key)) { seen.add(key); routes.push(t); }
+    }
+    $("repeat").innerHTML = '<option value="">' + (routes.length ? "Choose…" : "No previous trips yet") + "</option>" +
+      routes.map((t,i) => `<option value="${i}">${esc(t.from)} → ${esc(t.to)} · ${esc(t.purpose)} (${esc(t.legs.map(l => l.mode).join(", "))})</option>`).join("");
+    $("repeat").disabled = !routes.length;
+  }
+  $("repeat").onchange = () => {
+    const t = routes[$("repeat").value];
+    if (t) {
+      $("purpose").value = t.purpose; $("from").value = t.from; $("to").value = t.to;
+      setLegs(t.legs); $("err").textContent = "";
+    }
+    $("repeat").value = "";
+  };
+
   function resetForm() {
-    $("form").reset(); $("legs").innerHTML = ""; addLeg(); $("err").textContent = "";
+    HTMLFormElement.prototype.reset.call($("form")); $("legs").innerHTML = ""; addLeg(); $("err").textContent = "";
   }
   $("form").addEventListener("reset", () => setTimeout(() => { $("legs").innerHTML = ""; addLeg(); $("err").textContent = ""; }));
 
@@ -192,34 +229,63 @@
   // ---- Trip list ----
   const pending = () => state.trips.filter(t => t.status !== "sent");
   function render() {
-    $("count").textContent = state.trips.length;
-    $("retry").hidden = !pending().length;
-    $("list").innerHTML = state.trips.length ? state.trips.map(t => `
+    refreshRepeat();
+    const p = pending();
+    $("count").textContent = state.trips.length - p.length;
+    $("pcount").textContent = p.length;
+    $("pendingBox").hidden = !p.length;
+    $("retry").hidden = !p.length || sending;
+    $("list").innerHTML = p.map(t => `
       <div class="trip"><div class="trip-top">
         <div><strong>${esc(t.date)} ${esc(t.time)}</strong> · ${esc(t.purpose)}<br>${esc(t.from)} → ${esc(t.to)}</div>
-        ${t.status==="sent" ? '<span class="badge sent">Submitted ✓</span>' : '<span class="badge pending">Saved, not submitted</span>'}</div>
+        ${sending && t === current ? '<span class="badge sending">Sending…</span>' : '<span class="badge pending">Saved, not submitted</span>'}</div>
         <ol class="trip-legs">${t.legs.map(l => `<li>${esc(l.mode)} · ${esc(l.km)} km · ${esc(l.min)} min${l.cost!==""?` · ${esc(l.cost)} THB`:""}${l.reason?` — ${esc(l.reason)}`:""}</li>`).join("")}</ol>
-      </div>`).join("") : '<div class="empty">No trips yet.</div>';
+      </div>`).join("");
   }
 
   // ---- Sending (one row per leg) ----
   const HEAD = ["Trip ID","HazMon No","Date","Start time","Purpose","From","To","Leg","Mode","Distance (km)","Travel time (min)","Cost (THB)","Reason for choosing","Preferred alternative (and why)"];
   const tripRows = t => t.legs.map((l,i) => [t.id,t.hazmon,t.date,t.time,t.purpose,t.from,t.to,i+1,l.mode,l.km,l.min,l.cost,l.reason,l.alt]);
-  let sending = false;
+  let sending = false, current = null, retryTimer = null;
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  // One POST with a timeout. Apps Script ignores a repeated Trip ID, so retrying is always safe.
+  async function post(t) {
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 25000);
+    try {
+      // text/plain + no-cors avoids a CORS preflight, which Apps Script doesn't answer.
+      // The response is opaque, so a fetch that resolves is treated as success.
+      await fetch(SUBMIT_URL, {method:"POST", mode:"no-cors", signal:ctl.signal,
+                  headers:{"Content-Type":"text/plain;charset=utf-8"},
+                  body:JSON.stringify({header:HEAD, rows:tripRows(t)})});
+    } finally { clearTimeout(timer); }
+  }
+  // Try up to 3 times quickly while the badge says "Sending…", so a hiccup never shows as "not submitted".
+  async function postWithRetry(t) {
+    const waits = [0, 1500, 4000];
+    for (let i = 0; i < waits.length; i++) {
+      if (waits[i]) await sleep(waits[i]);
+      try { await post(t); return true; } catch (err) { console.warn("Submit attempt " + (i+1) + " failed:", err); }
+    }
+    return false;
+  }
   async function sendPending() {
     if (sending || !pending().length) return;
     if (!SUBMIT_URL) { flash("toast2", "Submission address not configured yet (SUBMIT_URL)."); return; }
+    clearTimeout(retryTimer);
     sending = true;
-    for (const t of pending()) {
-      try {
-        // text/plain + no-cors avoids a CORS preflight, which Apps Script doesn't answer.
-        // The response is opaque, so a fetch that resolves is treated as success.
-        await fetch(SUBMIT_URL, {method:"POST", mode:"no-cors", headers:{"Content-Type":"text/plain;charset=utf-8"},
-                    body:JSON.stringify({header:HEAD, rows:tripRows(t)})});
-        t.status = "sent"; save(); render();
-      } catch { flash("toast2", "Couldn't send. Saved on this device, will retry."); break; }
+    let t, failed = false;
+    // re-check each pass so trips submitted while another is in flight are also sent
+    while ((t = pending()[0])) {
+      current = t; render();
+      if (await postWithRetry(t)) { t.status = "sent"; save(); render(); }
+      else { failed = true; break; }
     }
-    sending = false;
+    sending = false; current = null; render();
+    if (failed) {
+      flash("toast2", "Couldn't send. Saved on this device, retrying shortly.");
+      retryTimer = setTimeout(sendPending, 30000);   // keeps trying while the page stays open
+    }
   }
   $("retry").onclick = sendPending;
   window.addEventListener("online", sendPending);
